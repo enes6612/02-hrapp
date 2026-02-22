@@ -1,5 +1,4 @@
-﻿using HrApp.Services;
-using HrApp.ViewModels;
+﻿using HrApp.ViewModels;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
@@ -7,11 +6,13 @@ namespace HrApp.Controllers
 {
     public class AccountController : Controller
     {
-        private readonly IAuthenticationService _authenticationService;
+        private readonly UserManager<IdentityUser> _userManager;
+        private readonly SignInManager<IdentityUser> _signInManager;
 
-        public AccountController(IAuthenticationService authentication)
+        public AccountController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager)
         {
-            _authenticationService = authentication;
+            _userManager = userManager;
+            _signInManager = signInManager;
         }
 
         #region Login
@@ -30,26 +31,29 @@ namespace HrApp.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> LoginUserName(LoginUserNameViewModel loginModel)
+        public async Task<IActionResult> LoginUserName(LoginUserNameViewModel model)
         {
             if (ModelState.IsValid)
             {
-                var result = await _authenticationService.SignInAsync(loginModel.UserName, null, loginModel.Password);
-                if (result.Succeeded)
+                var searchUser = await _userManager.FindByNameAsync(model.UserName);
+                if (searchUser is not null)
                 {
-
-                    return RedirectToAction("Index", "Home");
+                    var result = await _signInManager.PasswordSignInAsync(searchUser, model.Password, false, lockoutOnFailure: false);
+                    if (result.Succeeded)
+                    {
+                        return RedirectToAction("Index", "Home");
+                    }
+                    else
+                    {
+                        ModelState.AddModelError("", "Invalid login attempt");
+                    }
                 }
                 else
                 {
-                    foreach (var error in result.Errors)
-                    {
-                        ModelState.AddModelError("", error);
-                    }
+                    ModelState.AddModelError("", "Invalid login attempt");
                 }
             }
-
-            return View();
+            return View(model);
         }
 
         #endregion
@@ -63,25 +67,63 @@ namespace HrApp.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> LoginEmailAsync(LoginEmailViewModel loginModel)
+        public async Task<IActionResult> LoginEmailAsyc(LoginEmailViewModel model)
         {
             if (ModelState.IsValid)
             {
-                var result = await _authenticationService.SignInAsync(null, loginModel.Email, loginModel.Password);
-                if (result.Succeeded)
+                var searchUser = await _userManager.FindByEmailAsync(model.Email);
+                if (searchUser is not null)
                 {
-                    return RedirectToAction("Index", "Home");
+                    var result = await _signInManager.PasswordSignInAsync(searchUser, model.Password, false, lockoutOnFailure: false);
+                    if (result.Succeeded)
+                    {
+                        return RedirectToAction("Index", "Home");
+                    }
+                    else
+                    {
+                        ModelState.AddModelError("", "Invalid login attempt");
+                    }
                 }
                 else
                 {
-                    ModelState.AddModelError("", result.Errors!.FirstOrDefault());
+                    ModelState.AddModelError("", "Invalid login attempt");
                 }
             }
-
-            return View();
+            return View(model);
         }
 
         #endregion
+
+        [HttpPost]
+        public async Task<IActionResult> LoginUserAsyc(...ViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var searchUser = await _userManager.FindByNameAsync(model.UserNameOrEmail);
+                if(searchUser is null)
+                {
+                    searchUser = await _userManager.FindByEmailAsync(model.UserNameOrEmail);
+                }
+             
+                if (searchUser is not null)
+                {
+                    var result = await _signInManager.PasswordSignInAsync(searchUser, model.Password, false, lockoutOnFailure: false);
+                    if (result.Succeeded)
+                    {
+                        return RedirectToAction("Index", "Home");
+                    }
+                    else
+                    {
+                        ModelState.AddModelError("", "Invalid login attempt");
+                    }
+                }
+                else
+                {
+                    ModelState.AddModelError("", "Invalid login attempt");
+                }
+            }
+            return View(model);
+        }
 
         #region Register
 
@@ -92,17 +134,16 @@ namespace HrApp.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> RegisterAsync(RegisterViewModel registrationData)
+        public async Task<IActionResult> RegisterAsync(RegisterViewModel registerModel)
         {
             if (ModelState.IsValid)
             {
                 var identityUser = new IdentityUser
                 {
-                    Email = registrationData.Email,
-                    UserName = registrationData.UserName
+                    Email = registerModel.Email,
+                    UserName = registerModel.UserName
                 };
-
-                var result = await _authenticationService.RegisterAsync(registrationData);
+                var result = await _userManager.CreateAsync(identityUser, registerModel.Password);
                 if (result.Succeeded)
                 {
                     return RedirectToAction("Login", "Account");
@@ -111,7 +152,7 @@ namespace HrApp.Controllers
                 {
                     foreach(var error in result.Errors)
                     {
-                        ModelState.AddModelError("", error);
+                        ModelState.AddModelError(error.Code, error.Description);
                     }
                 }
             }
@@ -124,15 +165,9 @@ namespace HrApp.Controllers
 
         public async Task<IActionResult> LogoutAsync()
         {
-            await _authenticationService.SignOutAsync();
+            await _signInManager.SignOutAsync();
             return RedirectToAction("Login", "Account");
         }
-
-        #endregion
-
-        #region Facebook
-
-
 
         #endregion
     }
